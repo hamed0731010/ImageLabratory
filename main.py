@@ -26,11 +26,18 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QStackedWidget,
     QSizePolicy,
     QStatusBar,
     QVBoxLayout,
     QWidget,
 )
+from features.pytorch_to_onnx import PyTorchToONNX
+from features.onnx_classifier import ONNXClassifier
+from features.pytorch_classifier import PyTorchClassifier
+from features.ocr_keyword_classifier import OCRKeywordClassifier
+from features.training import TrainingFeature
+from features.clustering import ClusteringFeature
 
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tif", ".tiff", ".webp"}
@@ -45,6 +52,7 @@ class ImageView(QGraphicsView):
         self.scene = QGraphicsScene(self)
         self.setScene(self.scene)
         self.pixmap_item: QGraphicsPixmapItem | None = None
+        self.user_zoomed = False
         self.setRenderHints(QPainter.RenderHint.SmoothPixmapTransform)
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.setBackgroundBrush(Qt.GlobalColor.black)
@@ -57,20 +65,32 @@ class ImageView(QGraphicsView):
         self.scene.clear()
         self.pixmap_item = self.scene.addPixmap(QPixmap.fromImage(image))
         self.scene.setSceneRect(self.pixmap_item.boundingRect())
+        self.user_zoomed = False
         self.fit_image()
         return image.width(), image.height()
 
     def fit_image(self) -> None:
         if self.pixmap_item:
+            self.user_zoomed = False
             self.fitInView(self.pixmap_item, Qt.AspectRatioMode.KeepAspectRatio)
+
+    def zoom_in(self) -> None:
+        if self.pixmap_item:
+            self.user_zoomed = True
+            self.scale(1.25, 1.25)
+
+    def zoom_out(self) -> None:
+        if self.pixmap_item:
+            self.user_zoomed = True
+            self.scale(0.8, 0.8)
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
-        self.fit_image()
 
     def wheelEvent(self, event) -> None:  # noqa: N802
         if not self.pixmap_item:
             return
+        self.user_zoomed = True
         factor = 1.25 if event.angleDelta().y() > 0 else 0.8
         self.scale(factor, factor)
 
@@ -112,6 +132,12 @@ class LabelStudio(QMainWindow):
         mirror_button.clicked.connect(self.mirror_current)
         rotate_all_button = QPushButton("Rotate all source images 90°")
         rotate_all_button.clicked.connect(self.rotate_all_images)
+        zoom_in_button = QPushButton("Zoom in")
+        zoom_in_button.clicked.connect(self.image_view_zoom_in)
+        zoom_out_button = QPushButton("Zoom out")
+        zoom_out_button.clicked.connect(self.image_view_zoom_out)
+        fit_button = QPushButton("Fit")
+        fit_button.clicked.connect(self.image_view_fit)
 
         setup = QGroupBox("1. Setup")
         form = QFormLayout(setup)
@@ -140,6 +166,9 @@ class LabelStudio(QMainWindow):
         image_tools_layout.addWidget(rotate_button)
         image_tools_layout.addWidget(mirror_button)
         image_tools_layout.addWidget(rotate_all_button)
+        image_tools_layout.addWidget(zoom_in_button)
+        image_tools_layout.addWidget(zoom_out_button)
+        image_tools_layout.addWidget(fit_button)
         form.addRow("Image tools:", image_tools)
 
         self.image_view = ImageView()
@@ -178,8 +207,12 @@ class LabelStudio(QMainWindow):
         nav.addWidget(self.next_button)
         controls_layout.addLayout(nav)
 
-        central = QWidget()
-        layout = QVBoxLayout(central)
+        manual_page = QWidget()
+        layout = QVBoxLayout(manual_page)
+        self.sidebar_toggle_button = QPushButton("Hide sidebar")
+        self.sidebar_toggle_button.setFixedWidth(120)
+        self.sidebar_toggle_button.clicked.connect(lambda: self.toggle_sidebar(not self.sidebar.isVisible()))
+        layout.addWidget(self.sidebar_toggle_button, alignment=Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(setup)
         layout.addWidget(self.image_view, stretch=1)
         info = QHBoxLayout()
@@ -188,6 +221,97 @@ class LabelStudio(QMainWindow):
         info.addWidget(self.size_label)
         layout.addLayout(info)
         layout.addWidget(controls)
+
+        self.sidebar = QWidget()
+        self.sidebar.setFixedWidth(190)
+        self.sidebar.setStyleSheet("QWidget { background: #20252b; } QPushButton { padding: 12px 8px; text-align: left; color: #e8edf2; border: 0; } QPushButton:checked { background: #3b82f6; }")
+        sidebar_layout = QVBoxLayout(self.sidebar)
+        sidebar_layout.setContentsMargins(8, 12, 8, 8)
+        sidebar_title = QLabel("FEATURES")
+        sidebar_title.setStyleSheet("color: #9aa4b2; font-size: 11px; font-weight: bold; padding: 4px 8px;")
+        sidebar_layout.addWidget(sidebar_title)
+        manual_button = QPushButton("Manual labeling")
+        manual_button.setCheckable(True)
+        manual_button.setChecked(True)
+        sidebar_layout.addWidget(manual_button)
+        onnx_button = QPushButton("PyTorch → ONNX")
+        onnx_button.setCheckable(True)
+        sidebar_layout.addWidget(onnx_button)
+        classifier_button = QPushButton("ONNX classifier")
+        classifier_button.setCheckable(True)
+        sidebar_layout.addWidget(classifier_button)
+        pytorch_classifier_button = QPushButton("PyTorch classifier")
+        pytorch_classifier_button.setCheckable(True)
+        sidebar_layout.addWidget(pytorch_classifier_button)
+        ocr_button = QPushButton("OCR keyword classifier")
+        ocr_button.setCheckable(True)
+        sidebar_layout.addWidget(ocr_button)
+        training_button = QPushButton("Train classifier")
+        training_button.setCheckable(True)
+        sidebar_layout.addWidget(training_button)
+        clustering_button = QPushButton("Image clustering")
+        clustering_button.setCheckable(True)
+        sidebar_layout.addWidget(clustering_button)
+        sidebar_layout.addStretch()
+
+        onnx_page = PyTorchToONNX()
+        classifier_page = ONNXClassifier()
+        pytorch_classifier_page = PyTorchClassifier()
+        ocr_page = OCRKeywordClassifier()
+        training_page = TrainingFeature()
+        clustering_page = ClusteringFeature()
+
+        content_stack = QStackedWidget()
+        content_stack.addWidget(manual_page)
+        content_stack.addWidget(onnx_page)
+        content_stack.addWidget(classifier_page)
+        content_stack.addWidget(pytorch_classifier_page)
+        content_stack.addWidget(ocr_page)
+        content_stack.addWidget(training_page)
+        content_stack.addWidget(clustering_page)
+        manual_button.clicked.connect(lambda: content_stack.setCurrentIndex(0))
+        manual_button.clicked.connect(lambda: onnx_button.setChecked(False))
+        manual_button.clicked.connect(lambda: classifier_button.setChecked(False))
+        manual_button.clicked.connect(lambda: pytorch_classifier_button.setChecked(False))
+        manual_button.clicked.connect(lambda: ocr_button.setChecked(False))
+        onnx_button.clicked.connect(lambda: content_stack.setCurrentIndex(1))
+        onnx_button.clicked.connect(lambda: manual_button.setChecked(False))
+        onnx_button.clicked.connect(lambda: classifier_button.setChecked(False))
+        classifier_button.clicked.connect(lambda: content_stack.setCurrentIndex(2))
+        classifier_button.clicked.connect(lambda: manual_button.setChecked(False))
+        classifier_button.clicked.connect(lambda: onnx_button.setChecked(False))
+        classifier_button.clicked.connect(lambda: pytorch_classifier_button.setChecked(False))
+        pytorch_classifier_button.clicked.connect(lambda: content_stack.setCurrentIndex(3))
+        pytorch_classifier_button.clicked.connect(lambda: manual_button.setChecked(False))
+        pytorch_classifier_button.clicked.connect(lambda: onnx_button.setChecked(False))
+        pytorch_classifier_button.clicked.connect(lambda: classifier_button.setChecked(False))
+        pytorch_classifier_button.clicked.connect(lambda: ocr_button.setChecked(False))
+        ocr_button.clicked.connect(lambda: content_stack.setCurrentIndex(4))
+        ocr_button.clicked.connect(lambda: manual_button.setChecked(False))
+        ocr_button.clicked.connect(lambda: onnx_button.setChecked(False))
+        ocr_button.clicked.connect(lambda: classifier_button.setChecked(False))
+        ocr_button.clicked.connect(lambda: pytorch_classifier_button.setChecked(False))
+        ocr_button.clicked.connect(lambda: training_button.setChecked(False))
+        training_button.clicked.connect(lambda: content_stack.setCurrentIndex(5))
+        training_button.clicked.connect(lambda: manual_button.setChecked(False))
+        training_button.clicked.connect(lambda: onnx_button.setChecked(False))
+        training_button.clicked.connect(lambda: classifier_button.setChecked(False))
+        training_button.clicked.connect(lambda: pytorch_classifier_button.setChecked(False))
+        training_button.clicked.connect(lambda: ocr_button.setChecked(False))
+        training_button.clicked.connect(lambda: clustering_button.setChecked(False))
+        clustering_button.clicked.connect(lambda: content_stack.setCurrentIndex(6))
+        clustering_button.clicked.connect(lambda: manual_button.setChecked(False))
+        clustering_button.clicked.connect(lambda: onnx_button.setChecked(False))
+        clustering_button.clicked.connect(lambda: classifier_button.setChecked(False))
+        clustering_button.clicked.connect(lambda: pytorch_classifier_button.setChecked(False))
+        clustering_button.clicked.connect(lambda: ocr_button.setChecked(False))
+        clustering_button.clicked.connect(lambda: training_button.setChecked(False))
+
+        central = QWidget()
+        central_layout = QHBoxLayout(central)
+        central_layout.setContentsMargins(0, 0, 0, 0)
+        central_layout.addWidget(self.sidebar)
+        central_layout.addWidget(content_stack, stretch=1)
         self.setCentralWidget(central)
 
         self.status = QStatusBar()
@@ -199,6 +323,11 @@ class LabelStudio(QMainWindow):
 
     def create_menu(self) -> None:
         menu = self.menuBar().addMenu("View")
+        sidebar_action = QAction("Show sidebar", self)
+        sidebar_action.setCheckable(True)
+        sidebar_action.setChecked(True)
+        sidebar_action.triggered.connect(self.toggle_sidebar)
+        menu.addAction(sidebar_action)
         fit = QAction("Fit image to window", self)
         fit.setShortcut("F")
         fit.triggered.connect(self.image_view.fit_image)
@@ -206,6 +335,10 @@ class LabelStudio(QMainWindow):
         reset = QAction("Reset / choose another folder", self)
         reset.triggered.connect(self.reset)
         menu.addAction(reset)
+
+    def toggle_sidebar(self, visible: bool) -> None:
+        self.sidebar.setVisible(visible)
+        self.sidebar_toggle_button.setText("Hide sidebar" if visible else "Show sidebar")
 
     def choose_directory(self) -> None:
         directory = QFileDialog.getExistingDirectory(self, "Choose image folder")
@@ -423,6 +556,7 @@ class LabelStudio(QMainWindow):
         self.image_view.scene.clear()
         self.image_view.pixmap_item = self.image_view.scene.addPixmap(QPixmap.fromImage(image))
         self.image_view.scene.setSceneRect(self.image_view.pixmap_item.boundingRect())
+        self.image_view.user_zoomed = False
         self.image_view.fit_image()
         self.current_size = image.width(), image.height()
         self.size_label.setText(f"{image.width()} × {image.height()} px")
@@ -431,6 +565,15 @@ class LabelStudio(QMainWindow):
         if self.index >= 0 and self.index < len(self.images):
             self.rotation = (self.rotation + 90) % 360
             self.refresh_current_transform()
+
+    def image_view_zoom_in(self) -> None:
+        self.image_view.zoom_in()
+
+    def image_view_zoom_out(self) -> None:
+        self.image_view.zoom_out()
+
+    def image_view_fit(self) -> None:
+        self.image_view.fit_image()
 
     def mirror_current(self) -> None:
         if self.index >= 0 and self.index < len(self.images):

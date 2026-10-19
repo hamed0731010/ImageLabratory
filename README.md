@@ -16,3 +16,15 @@ The viewer loads the original image and only scales the on-screen view to fit; u
 Use **Save setup** to store the folder and classes in the local `image_label_studio.db` SQLite database. The most recently saved setup is restored automatically the next time the app starts, and **Load from database** lets you choose another saved setup.
 
 The current image position is saved too, so restarting the program resumes from the last image you were reviewing.
+
+The sidebar also includes **PyTorch → ONNX**. Complete models and TorchScript files can be exported directly. For a state dictionary, select **State dictionary**, then provide the Python architecture file and model class name.
+
+The **ONNX classifier** feature accepts an ONNX model, labels file (`.json`, `.txt`, or `.csv`), and image directory. It predicts every image and copies or moves each image into a subfolder named for its predicted class. Input size can be detected automatically or entered manually as `WIDTH,HEIGHT`.
+
+The **PyTorch classifier** provides the same workflow for complete PyTorch models, TorchScript models, and state dictionaries. State dictionaries require the matching architecture Python file and model class.
+
+The **OCR keyword classifier** uses Tesseract and a JSON keyword map. It counts each keyword for every class, assigns the image to the class with the highest count, optionally handles unmatched images, and writes `ocr_keyword_report.csv` in the source folder.
+
+The **Train classifier** feature accepts an ImageFolder-style dataset, supports EfficientNet-B1, ResNet-18, and MobileNet-V3, and creates training artifacts: `best.pt`, `last.pt`, `model.onnx`, `history.json`, `classes.json`, and `summary.json`. A dataset may contain `train_data` and `val_data` folders, or class folders directly for an automatic train/validation split.
+
+The **Image clustering** feature creates visual embeddings with pretrained ResNet-18, then groups images with K-Means or Agglomerative clustering. It creates `cluster_###` folders and writes `clusters.csv` and `summary.json`.
