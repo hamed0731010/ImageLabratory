@@ -28,3 +28,5 @@ The **OCR keyword classifier** uses Tesseract and a JSON keyword map. It counts 
 The **Train classifier** feature accepts an ImageFolder-style dataset, supports EfficientNet-B1, ResNet-18, and MobileNet-V3, and creates training artifacts: `best.pt`, `last.pt`, `model.onnx`, `history.json`, `classes.json`, and `summary.json`. A dataset may contain `train_data` and `val_data` folders, or class folders directly for an automatic train/validation split.
 
 The **Image clustering** feature creates visual embeddings with pretrained ResNet-18, then groups images with K-Means or Agglomerative clustering. It creates `cluster_###` folders and writes `clusters.csv` and `summary.json`.
+
+The **Template generator** creates synthetic text examples from any template-image folder. It varies text, font, size, position, rotation, color, and contrast. Names/IDs, results, categories, properties, and custom text are editable in the UI, so the generator is domain-independent.

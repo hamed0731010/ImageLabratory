@@ -5,6 +5,8 @@ import json
 import os
 import re
 import shutil
+import time
+from datetime import datetime
 from pathlib import Path
 
 from PyQt6.QtWidgets import QFileDialog, QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QWidget
@@ -74,13 +76,14 @@ class OCRKeywordClassifier(QWidget):
         result = {}
         for name, words in data.items():
             if isinstance(words, str): words = [words]
-            if not isinstance(words, list) or not words:
-                raise ValueError(f"Class '{name}' must have a non-empty keyword list.")
+            if not isinstance(words, list):
+                raise ValueError(f"Class '{name}' must have a keyword list, which may be empty for a fallback class.")
             result[str(name)] = [str(word).strip().lower() for word in words if str(word).strip()]
         return result
 
     def classify(self) -> None:
         try:
+            started_at = time.perf_counter()
             import pytesseract
             from PIL import Image, ImageEnhance, ImageOps
         except ImportError:
@@ -97,6 +100,15 @@ class OCRKeywordClassifier(QWidget):
             if max_dimension < 400: raise ValueError("Max OCR size must be at least 400.")
             keyword_map = self.read_keyword_map(keyword_file)
             pytesseract.pytesseract.tesseract_cmd = str(tess_cmd)
+            tessdata_dir = tess_cmd.parent / "tessdata"
+            language_file = tessdata_dir / f"{language}.traineddata"
+            if not language_file.is_file():
+                raise ValueError(
+                    f"Missing Tesseract language file: {language_file}. "
+                    f"Install {language}.traineddata in the tessdata folder or choose another language."
+                )
+            os.environ["TESSDATA_PREFIX"] = str(tessdata_dir)
+            pytesseract.get_tesseract_version()
             files = sorted((p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS), key=lambda p: p.name.lower())
             rows = []
             for number, source in enumerate(files, 1):
@@ -110,7 +122,8 @@ class OCRKeywordClassifier(QWidget):
                         text = pytesseract.image_to_string(image, lang=language, config="--oem 1 --psm 6", timeout=45)
                     normalized = text.casefold()
                     scores = {name: sum(len(re.findall(re.escape(word), normalized)) for word in words) for name, words in keyword_map.items()}
-                    best = max(scores, key=scores.get) if scores and max(scores.values()) > 0 else "_unmatched"
+                    fallback = next((name for name, words in keyword_map.items() if not words), "_unmatched")
+                    best = max(scores, key=scores.get) if scores and max(scores.values()) > 0 else fallback
                     row = {"file": str(source), "class": best, "score": scores.get(best, 0), "scores": json.dumps(scores), "ocr_text": " ".join(text.split())[:1000], "status": ""}
                     if best == "_unmatched":
                         action = self.unmatched.currentIndex()
@@ -122,14 +135,21 @@ class OCRKeywordClassifier(QWidget):
                         if self.mode.currentIndex() == 0: self.copy(source, folder / best)
                         else: self.transfer(source, folder / best)
                     rows.append(row)
-                    self.status.setText(f"Processed {number}/{len(files)}: {source.name} → {best}")
+                    elapsed = time.perf_counter() - started_at
+                    self.status.setText(f"Processed {number}/{len(files)}: {source.name} → {best} | Elapsed: {elapsed:.1f}s")
                 except Exception as error:
                     rows.append({"file": str(source), "class": "", "score": 0, "scores": "{}", "ocr_text": "", "status": f"error: {error}"})
             report = folder / "ocr_keyword_report.csv"
-            with report.open("w", newline="", encoding="utf-8-sig") as stream:
+            try:
+                report_stream = report.open("w", newline="", encoding="utf-8-sig")
+            except PermissionError:
+                report = folder / f"ocr_keyword_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+                report_stream = report.open("w", newline="", encoding="utf-8-sig")
+            with report_stream as stream:
                 writer = csv.DictWriter(stream, fieldnames=["file", "class", "score", "scores", "ocr_text", "status"])
                 writer.writeheader(); writer.writerows(rows)
-            self.status.setText(f"Finished: {len(files)} images. Report: {report}")
+            elapsed = time.perf_counter() - started_at
+            self.status.setText(f"Finished: {len(files)} images in {elapsed:.1f}s ({elapsed / max(1, len(files)):.2f}s/image). Report: {report}")
         except Exception as error:
             self.error(str(error))
 
