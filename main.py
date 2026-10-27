@@ -41,6 +41,7 @@ from features.training import TrainingFeature
 from features.model_evaluation import ModelEvaluationFeature
 from features.clustering import ClusteringFeature
 from features.template_generator import TemplateGenerator
+from features.vlm_labeling import VLMLabeling
 
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tif", ".tiff", ".webp"}
@@ -347,6 +348,9 @@ class LabelStudio(QMainWindow):
         template_button = QPushButton("Template generator   [DISABLED]")
         template_button.setCheckable(True)
         template_button.setToolTip("Temporarily disabled")
+        vlm_button = QPushButton("VLM / JEV labeling")
+        vlm_button.setCheckable(True)
+        sidebar_layout.addWidget(vlm_button)
         sidebar_layout.addWidget(template_button)
         # ONNX workflows are kept available in the code but temporarily disabled.
         onnx_button.setEnabled(False)
@@ -369,6 +373,7 @@ class LabelStudio(QMainWindow):
         evaluation_page = ModelEvaluationFeature()
         clustering_page = ClusteringFeature()
         template_page = TemplateGenerator()
+        vlm_page = VLMLabeling()
 
         content_stack = QStackedWidget()
         content_stack.addWidget(manual_page)
@@ -380,6 +385,7 @@ class LabelStudio(QMainWindow):
         content_stack.addWidget(evaluation_page)
         content_stack.addWidget(clustering_page)
         content_stack.addWidget(template_page)
+        content_stack.addWidget(vlm_page)
         manual_button.clicked.connect(lambda: content_stack.setCurrentIndex(0))
         manual_button.clicked.connect(lambda: onnx_button.setChecked(False))
         manual_button.clicked.connect(lambda: classifier_button.setChecked(False))
@@ -424,6 +430,12 @@ class LabelStudio(QMainWindow):
         clustering_button.clicked.connect(lambda: training_button.setChecked(False))
         clustering_button.clicked.connect(lambda: template_button.setChecked(False))
         template_button.clicked.connect(lambda: content_stack.setCurrentIndex(8))
+        vlm_button.clicked.connect(lambda: content_stack.setCurrentIndex(9))
+        vlm_button.clicked.connect(lambda: manual_button.setChecked(False))
+        vlm_button.clicked.connect(lambda: pytorch_classifier_button.setChecked(False))
+        vlm_button.clicked.connect(lambda: ocr_button.setChecked(False))
+        vlm_button.clicked.connect(lambda: training_button.setChecked(False))
+        vlm_button.clicked.connect(lambda: evaluation_button.setChecked(False))
         template_button.clicked.connect(lambda: manual_button.setChecked(False))
         template_button.clicked.connect(lambda: onnx_button.setChecked(False))
         template_button.clicked.connect(lambda: classifier_button.setChecked(False))
