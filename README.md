@@ -1,6 +1,6 @@
-# Image Label Studio
+# Image Laboratory
 
-A simple PyQt6 desktop app for whole-image classification.
+یک نرم‌افزار دسکتاپ مبتنی بر `PyQt6` برای آماده‌سازی دیتاست‌های تصویری، برچسب‌گذاری دستی و خودکار، آموزش مدل و ارزیابی نتایج.
 
 ## Run
 
@@ -9,24 +9,65 @@ python -m pip install -r requirements.txt
 python main.py
 ```
 
-Choose a folder containing images, enter classes separated by commas (for example `cat, dog, car`), and click **Set classes**. Select a class button to copy or move the current image into a matching subfolder and advance automatically.
+پس از نصب، برنامه به‌صورت محلی روی ویندوز اجرا می‌شود. یک پوشه تصویر و کلاس‌ها را انتخاب کنید؛ سپس تصاویر با انتخاب کلاس به پوشه مربوطه کپی یا منتقل می‌شوند.
 
-The viewer loads the original image and only scales the on-screen view to fit; use the mouse wheel to zoom and drag to pan. **Rotate 90°** and **Mirror** apply to the current image and are saved when you label it. **Rotate all source images 90°** permanently rewrites every source image after confirmation.
+## قابلیت‌ها
 
-Use **Save setup** to store the folder and classes in the local `image_label_studio.db` SQLite database. The most recently saved setup is restored automatically the next time the app starts, and **Load from database** lets you choose another saved setup.
+### 1. برچسب‌گذاری دستی — Manual Labeling
 
-The current image position is saved too, so restarting the program resumes from the last image you were reviewing.
+نمایش تصویر، تصویر قبلی و بعدی، ردکردن، Undo، زوم، جابه‌جایی، چرخش، آینه‌کردن، برش و انتخاب Copy یا Move.
 
-The sidebar also includes **PyTorch → ONNX**. Complete models and TorchScript files can be exported directly. For a state dictionary, select **State dictionary**, then provide the Python architecture file and model class name.
+### 2. برچسب‌گذاری با مدل بینایی — VLM / JEV Labeling
 
-The **ONNX classifier** feature accepts an ONNX model, labels file (`.json`, `.txt`, or `.csv`), and image directory. It predicts every image and copies or moves each image into a subfolder named for its predicted class. Input size can be detected automatically or entered manually as `WIDTH,HEIGHT`.
+هر تصویر به API سازگار با OpenAI ارسال می‌شود و بر اساس پاسخ مدل در پوشه برچسب قرار می‌گیرد.
 
-The **PyTorch classifier** provides the same workflow for complete PyTorch models, TorchScript models, and state dictionaries. State dictionaries require the matching architecture Python file and model class.
+ورودی‌ها: API Endpoint، API Token، نام مدل، حداکثر توکن خروجی، Prompt، JSON Schema، Dataset و پوشه خروجی. پاسخ باید یکی از فیلدهای `label`، `class`، `category` یا `name` را داشته باشد.
 
-The **OCR keyword classifier** uses Tesseract and a JSON keyword map. It counts each keyword for every class, assigns the image to the class with the highest count, optionally handles unmatched images, and writes `ocr_keyword_report.csv` in the source folder.
+برای هر برچسب یک پوشه ساخته می‌شود. نتایج در JSONL و خلاصه اجرا در `summary.json` ذخیره می‌شوند. پردازش قابل ادامه است.
 
-The **Train classifier** feature accepts an ImageFolder-style dataset, supports EfficientNet-B1, ResNet-18, and MobileNet-V3, and creates training artifacts: `best.pt`, `last.pt`, `model.onnx`, `history.json`, `classes.json`, and `summary.json`. A dataset may contain `train_data` and `val_data` folders, or class folders directly for an automatic train/validation split.
+> مدل آنلاین به اینترنت نیاز دارد؛ مدل محلی با Endpoint محلی قابل استفاده است.
 
-The **Image clustering** feature creates visual embeddings with pretrained ResNet-18, then groups images with K-Means or Agglomerative clustering. It creates `cluster_###` folders and writes `clusters.csv` and `summary.json`.
+### 3. دسته‌بندی متنی — OCR Keyword Classifier
 
-The **Template generator** creates synthetic text examples from any template-image folder. It varies text, font, size, position, rotation, color, and contrast. Names/IDs, results, categories, properties, and custom text are editable in the UI, so the generator is domain-independent.
+استخراج متن با Tesseract و دسته‌بندی تصاویر بر اساس کلمات کلیدی. گزارش `ocr_keyword_report.csv` نیز تولید می‌شود.
+
+### 4. طبقه‌بندی با PyTorch — PyTorch Classifier
+
+پشتیبانی از Complete Model، `TorchScript` و `State Dictionary` برای پیش‌بینی و انتقال تصاویر به پوشه کلاس.
+
+### 5. آموزش مدل — Train Classifier
+
+آموزش `EfficientNet-B1`، `ResNet-18` و `MobileNet-V3` با تنظیمات Epoch، Batch، اندازه تصویر و Resume. خروجی‌ها شامل `best.pt`، `last.pt`، `model.onnx`، `history.json`، `classes.json` و `summary.json` هستند.
+
+### 6. ارزیابی مدل — Model Evaluation
+
+محاسبه Accuracy، Precision، Recall، F1، Confusion Matrix و نمایش تصاویر اشتباه.
+
+### 7. تبدیل مدل — PyTorch to ONNX
+
+تبدیل مدل‌های PyTorch، TorchScript و State Dictionary به فرمت ONNX.
+
+### 8. خوشه‌بندی تصاویر — Image Clustering
+
+گروه‌بندی تصاویر با embeddingهای ResNet-18 و روش‌های `K-Means` یا `Agglomerative Clustering`.
+
+### 9. تولید دیتاست مصنوعی — Template Generator
+
+تولید نمونه با تغییر متن، فونت، اندازه، موقعیت، چرخش، رنگ و کنتراست.
+
+### 10. مدیریت پروژه — Project Management
+
+مسیر دیتاست، کلاس‌ها و آخرین موقعیت کار در `image_label_studio.db` ذخیره می‌شود.
+
+## ساختار خروجی VLM
+
+```text
+labeled/
+├── cat/
+├── dog/
+└── car/
+```
+
+## تکنولوژی‌ها
+
+`Python`، `PyQt6`، `PyTorch`، `TorchVision`، `Pillow`، `ONNX`، `Tesseract` و `scikit-learn`
